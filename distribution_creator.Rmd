@@ -1,0 +1,68 @@
+---
+title: "distributions"
+author: "Noah Josey"
+date: "2025-03-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(readr)
+
+data <- readRDS("pbp2014-2024.rds")
+
+# Distribution of Yards Gained by Play Type
+yard_dist <- data %>%
+  filter(!is.na(yards_gained)) %>%
+  group_by(play_type) %>%
+  summarise(
+    mean_yards = mean(yards_gained, na.rm = TRUE),
+    median_yards = median(yards_gained, na.rm = TRUE),
+    sd_yards = sd(yards_gained, na.rm = TRUE),
+    min_yards = min(yards_gained, na.rm = TRUE),
+    max_yards = max(yards_gained, na.rm = TRUE)
+  )
+
+print(yard_dist)
+
+# 4th Down Decision Probabilities
+fourth_down_choices <- data %>%
+  filter(down == 4) %>%
+  mutate(decision = case_when(
+    play_type == "punt" ~ "punt",
+    play_type == "field_goal" ~ "field_goal",
+    TRUE ~ "go_for_it"
+  )) %>%
+  group_by(yardline_100, ydstogo, decision) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(yardline_100, ydstogo) %>%
+  mutate(prob = count / sum(count)) %>%
+  select(yardline_100, ydstogo, decision, prob)
+
+print(fourth_down_choices)
+
+# Field Goal Success Rates by Distance
+fg_success <- data %>%
+  filter(!is.na(field_goal_result) & play_type == "field_goal") %>%
+  mutate(made_fg = ifelse(field_goal_result == "made", 1, 0)) %>%
+  group_by(kick_distance) %>%
+  summarise(
+    fg_attempts = n(),
+    fg_made = sum(made_fg),
+    fg_success_rate = mean(made_fg, na.rm = TRUE)
+  )
+
+print(fg_success)
+
+write_csv(yard_dist, "yard_distribution.csv")
+write_csv(fourth_down_choices, "fourth_down_probabilities.csv")
+write_csv(fg_success, "fg_success_rates.csv")
+
+```
+
