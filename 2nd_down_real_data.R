@@ -1,13 +1,12 @@
 library(dplyr)
 library(ggplot2)
 
-# Load real play-by-play data
 pbp <- readRDS("pbp2014-2024.rds")
 source("get_EP.R")
 get_EP <- Vectorize(get_EP)
 
 
-# ---- Filter 2nd and 1 Plays ----
+# filter only 2nd and 1
 real_2nd_and_1 <- pbp %>%
   filter(down == 2,
          ydstogo == 1,
@@ -15,7 +14,7 @@ real_2nd_and_1 <- pbp %>%
          !is.na(yards_gained),
          !is.na(yardline_100))
 
-# ---- Classify Play Call (Run vs Shot) ----
+# classify run or shot 
 real_2nd_and_1 <- real_2nd_and_1 %>%
   mutate(
     play_call = case_when(
@@ -24,21 +23,21 @@ real_2nd_and_1 <- real_2nd_and_1 %>%
       TRUE ~ NA_character_
     )
   ) %>%
-  filter(!is.na(play_call))  # keep only run or shot plays
+  filter(!is.na(play_call))  
 
-# ---- Calculate Derived Metrics ----
+# Calculate Metrics 
 real_2nd_and_1_results <- real_2nd_and_1 %>%
   mutate(
     start_fp = yardline_100,
     new_fp = yardline_100 + yards_gained,
-    new_fp = pmin(pmax(new_fp, 0), 100),  # clamp field position
+    new_fp = pmin(pmax(new_fp, 0), 100),  
     ep_after = get_EP(new_fp),
     success = yards_gained >= 1,
     turnover = (fumble_lost == 1 | interception == 1)
   ) %>%
   select(play_call, start_fp, yards_gained, new_fp, ep_after, success, turnover)
 
-# ---- Summary Stats ----
+# Summary Stats 
 real_summary <- real_2nd_and_1_results %>%
   group_by(play_call) %>%
   summarize(
