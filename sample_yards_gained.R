@@ -1,51 +1,43 @@
-library(mclust)
-library(dplyr)
-library(readr)
-library(tidyverse)
 
-# trained models
-pass_gmm <- readRDS("pass_gmm.rds")
-run_gmm <- readRDS("run_gmm.rds")
+gmm_models <- readRDS("gmm_models_by_context.rds")
 
-# Simulate outcome layer (incompletion, interception, fumble)
-simulate_play_outcome <- function(play_type) {
-  if (play_type == "pass") {
-    if (runif(1) < 0.3) return("incomplete")
-    if (runif(1) < 0.025) return("interception")
-    if (runif(1) < 0.015) return("fumble")
-  } else if (play_type == "run") {
-    if (runif(1) < 0.01) return("fumble")
-  }
-  "success"
-}
-
-# Sample yards gained 
-sample_yards_gained <- function(play_type, FP) {
-  outcome <- simulate_play_outcome(play_type)
+sample_yards_gained <- function(play_type, FP, YTG) {
   
-  if (outcome == "incomplete") {
-    return(0)
-  } else if (outcome == "interception") {
-    return(-sample(5:30, 1))
-  } else if (outcome == "fumble") {
-    return(-sample(0:15, 1))
-  }
+  # 1. Bucket field position
+  field_zone <- case_when(
+    FP <= 30 ~ "own_territory",
+    FP <= 70 ~ "midfield",
+    TRUE ~ "red_zone"
+  )
   
-  if (play_type == "pass") {
-    gmm <- pass_gmm
+  # 2. Bucket yards to go
+  ytg_bucket <- case_when(
+    YTG <= 3 ~ "short",
+    YTG <= 7 ~ "medium",
+    TRUE ~ "long"
+  )
+  
+  # 3. Build the key
+  key <- paste(play_type, field_zone, ytg_bucket, sep = "_")
+  
+  # 4. Check if GMM exists
+  if (!(key %in% names(gmm_models))) {
+    warning(paste("No GMM found for key:", key, "- using fallback."))
+    # fallback to generic midfield/medium model
+    fallback_key <- paste(play_type, "midfield", "medium", sep = "_")
+    gmm <- gmm_models[[fallback_key]]
   } else {
-    gmm <- run_gmm
+    gmm <- gmm_models[[key]]
   }
   
+  # 5. Sample from GMM
   component <- sample(1:length(gmm$parameters$pro), 1, prob = gmm$parameters$pro)
-  mean_val <- gmm$parameters$mean[component]
-  sd_val <- sqrt(gmm$parameters$variance$sigmasq[component])
-  yards <- round(rnorm(1, mean = mean_val, sd = sd_val))
+  mean_val <- as.numeric(gmm$parameters$mean[component])
+  var_val <- as.numeric(gmm$parameters$variance$sigmasq)[component]
   
-  # Adjust for red zone
-  if (FP >= 80) {
-    yards <- min(yards, 100 - FP)
-  }
+  if (is.na(var_val) || var_val <= 0) var_val <- 1
   
-  yards
+  yards <- round(rnorm(1, mean = mean_val, sd = sqrt(var_val)))
+  
+  return(yards)
 }
